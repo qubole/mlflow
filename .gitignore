@@ -100,3 +100,9 @@ travis_wait*.log
 
 mlflow/java/scoring/bin/*
 mlflow/java/client/bin/*
+mlflow/java/.settings/*
+mlflow/java/client/.classpath
+mlflow/java/scoring/.classpath
+mlflow/java/scoring/.settings/
+mlflow/java/client/.settings/
+
