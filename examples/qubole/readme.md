@@ -18,12 +18,16 @@ To run a long-lived, shared MLflow tracking server, launch an EC2 instance to ru
 
 Create an Anaconda with Python 3 AMI EC2 instance.You can use a t2.micro (Free-tier) instance for test environment. This AMI already has conda and many other packages needed pre-installed.
 Install mlflow: pip install mlflow.
-Open port 5000 for MLflow server; an example of how to do this via How to open a web server port on EC2 instance. Opening up port 5000 to the Internet will allow anyone to access your server, so it is recommended to only open up the port within an AWS VPC that your Databricks clusters have access to.
+Open port 5000 for MLflow server; an example of how to do this via How to open a web server port on EC2 instance. Opening up port 5000 to the Internet will allow anyone to access your server, so it is recommended to only open up the port within an AWS VPC that your Qubole clusters have access to.
 Configure your AWS credentials on the instance. The optimal configuration for MLflow Remote Tracking is to use the default-artifact-root option to store your artifacts in an S3 bucket.
 SSH into your EC2 instance, e.g. ssh -i ~/.ssh/<key>.pem ubuntu@<hostname>.<region>.compute.amazonaws.com.
 Configure your S3 credentials via aws cli; for more information, refer to Configuring the AWS CLI.
 Run the Tracking Server
-Start the tracking server: mlflow server --default-artifact-root s3://<bucket-name> --host 0.0.0.0. For more information, refer to MLflow > Running a Tracking Server.
+Start the tracking server: 
+```sh
+mlflow server --default-artifact-root s3://<bucket-name> --host 0.0.0.0.
+```
+For more information, refer to MLflow > Running a Tracking Server.
 Test connectivity of your tracking server. Go to http://<mlflow-server-dns>:5000; it should look similar to
 
 ![](https://docs.databricks.com/_static/images/mlflow/mlflow-web-ui.png)
