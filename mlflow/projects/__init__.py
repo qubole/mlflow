@@ -20,7 +20,8 @@ import mlflow.tracking as tracking
 from mlflow.tracking.fluent import _get_experiment_id, _get_git_commit
 
 
-from mlflow.projects import databricks, qubole
+import mlflow.projects.databricks
+import mlflow.projects.qubole
 from mlflow.utils import process
 from mlflow.utils.logging_utils import eprint
 from mlflow.utils.mlflow_tags import MLFLOW_GIT_BRANCH_NAME

@@ -101,7 +101,7 @@ class S3Utils(object):
                                 "script", "%s.sh" % script_hash)
             if not self._path_exists(s3_path):
                 self._upload(temp_filename, s3_path)
-                eprint("=== Finished script to %s ===" % s3_path)
+                eprint("=== Uploaded script to %s ===" % s3_path)
             else:
                 eprint("=== Script already exists in S3 ===")
         finally:
@@ -117,13 +117,13 @@ def before_run_validations(tracking_uri, cluster_spec):
     if cluster_spec is None:
         raise ExecutionException("Cluster spec must be provided when launching MLflow project "
                                  "runs on Qubole.")
-    if tracking.utils._is_local_uri(tracking_uri):
-        raise ExecutionException(
-            "When running on Qubole, the MLflow tracking URI must be "
-            "a remote HTTP URI accessible to both the "
-            "current client and code running on Qubole. Got local tracking URI %s. "
-            "Please specify a valid tracking URI via mlflow.set_tracking_uri or by setting the "
-            "MLFLOW_TRACKING_URI environment variable." % tracking_uri)
+    # if tracking.utils._is_local_uri(tracking_uri):
+    #     raise ExecutionException(
+    #         "When running on Qubole, the MLflow tracking URI must be "
+    #         "a remote HTTP URI accessible to both the "
+    #         "current client and code running on Qubole. Got local tracking URI %s. "
+    #         "Please specify a valid tracking URI via mlflow.set_tracking_uri or by setting the "
+    #         "MLFLOW_TRACKING_URI environment variable." % tracking_uri)
 
 def _get_qubole_run_script(project_s3_path, run_id, entry_point, parameters, env_vars):
     """
@@ -196,8 +196,8 @@ def _run_shell_command_job(project_s3_path, script_s3_path, cluster_spec):
     eprint("=== Launching MLflow run as Qubole job ===")
     
     Qubole.configure(**cluster_spec["qubole"])
-    args = ShellCommand.parse(shlex.split(args))
-    command = ShellCommand.run(**args)
+    args = ShellCommand.parse([shlex_quote(x) for x in args.split()])
+    command = ShellCommand.create(**args)
 
     return command
 
@@ -208,7 +208,6 @@ def run_qubole(remote_run, uri, entry_point, work_dir, parameters, experiment_id
     used to query the run's status or wait for the resulting Qubole command to terminate.
     """
     tracking_uri = tracking.get_tracking_uri()
-
     with open(cluster_spec, 'r') as handle:
         try:
             cluster_spec = json.load(handle)
@@ -225,7 +224,7 @@ def run_qubole(remote_run, uri, entry_point, work_dir, parameters, experiment_id
         "MLFLOW_CONDA_HOME": QUBOLE_CONDA_HOME
     }
 
-    run_id = remote_run.run_info.run_uuid
+    run_id = remote_run.info.run_uuid
     eprint("=== Running entry point %s of project %s on Qubole. ===" % (entry_point, uri))
     
     # Get the shell command to run
@@ -235,7 +234,7 @@ def run_qubole(remote_run, uri, entry_point, work_dir, parameters, experiment_id
 
     # Launch run on Qubole  
     command = _run_shell_command_job(project_s3_path, script_s3_path, cluster_spec)
-    submitted_run = QuboleSubmittedRun(command, run_id)
+    submitted_run = QuboleSubmittedRun(cluster_spec, command, run_id)
     submitted_run._print_description_and_log_tags()
     
     return submitted_run
@@ -254,7 +253,11 @@ class QuboleSubmittedRun(SubmittedRun):
         super(QuboleSubmittedRun, self).__init__()
         self.cluster_spec = cluster_spec
         self.command = command
-        self.run_id = run_id
+        self._mlflow_run_id = run_id
+
+    @property
+    def run_id(self):
+        return self._mlflow_run_id
 
     def wait(self):
         while not command.is_done(command.status):
@@ -286,7 +289,6 @@ class QuboleSubmittedRun(SubmittedRun):
         eprint("=== Launched MLflow run as Qubole command with ID %s. Getting run status "
                "page URL... ===" % self.run_id)
         command_url = self.get_command_url()
-        eprint("=== Check the run's status at %s ===" % jobs_page_url)
         tracking.MlflowClient().set_tag(self._mlflow_run_id,
                                         MLFLOW_QUBOLE_COMMAND_URL, command_url)
         tracking.MlflowClient().set_tag(self._mlflow_run_id,
