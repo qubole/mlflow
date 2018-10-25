@@ -8,8 +8,24 @@ When run in `"qubole"` mode, a `ShellCommand` is launched on QDS from the MLFlow
 Install `mlflow` package on cluster using the node-bootstrap.
 
 ```
-/usr/lib/a-4.2.0-py-3.5.3/pip install mlflow
-/usr/lib/a-4.2.0-py-2.7.13/pip install mlflow
+# Define a conda environment file for an environment with mlflow
+rm -rf /usr/lib/envs
+mkdir /usr/lib/envs
+
+conda_yaml="name: mlflow
+channels:
+  - defaults
+dependencies:
+  - pyaml
+  - pip:
+    - https://github.com/qubole/mlflow/releases/download/v0.7.0-q/mlflow-0.7.0.dev0-py3-none-any.whl"
+
+# Store spec file
+echo "$conda_yaml" >> conda.yaml
+# Create the new envrionment from package management py 3.5 base environment
+/usr/lib/a-4.2.0-py-3.5.3/bin/conda env create -p /usr/lib/envs/mlflow -f conda.yaml
+# Remove the spec file
+rm -f conda.yaml
 ```
 
 ## Start tracking server
@@ -34,9 +50,15 @@ Test connectivity of your tracking server. Go to http://<mlflow-server-dns>:5000
 
 ## Run the job
 
-### Set tracking server variable
+### Install Qubole MLFlow
 
-Set environment variable `MLFLOW_TRACKING_URI`.
+Create a virtual environment and install `mlflow`,
+
+```sh
+virtualenv mlflow_env
+source mlflow_env/bin/activate
+pip install https://github.com/qubole/mlflow/releases/download/v0.7.0-q/mlflow-0.7.0.dev0-py3-none-any.whl
+```
 
 ### Create cluster spec file
 Running the remote job requires `cluster-spec.json` to be passed as follows,
@@ -64,6 +86,14 @@ Running the remote job requires `cluster-spec.json` to be passed as follows,
         "notify": false
     }
 }
+```
+
+### Set tracking server variable
+
+Set environment variable `MLFLOW_TRACKING_URI`.
+
+```sh
+export MLFLOW_TRACKING_URI=http://<mlflow-server-dns>:5000
 ```
 
 ### Example
