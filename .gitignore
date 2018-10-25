@@ -95,3 +95,14 @@ example/tutorial/R/*.nb.html
 
 # travis_wait command logs
 travis_wait*.log
+
+.history
+
+mlflow/java/scoring/bin/*
+mlflow/java/client/bin/*
+mlflow/java/.settings/*
+mlflow/java/client/.classpath
+mlflow/java/scoring/.classpath
+mlflow/java/scoring/.settings/
+mlflow/java/client/.settings/
+
