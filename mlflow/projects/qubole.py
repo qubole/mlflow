@@ -142,8 +142,10 @@ def _get_qubole_run_script(project_s3_path, run_id, entry_point, parameters, env
     tar -xf {}
     # Configure boto creds
     source /usr/lib/hustler/bin/qubole-bash-lib.sh
+    set +x
     export AWS_ACCESS_KEY_ID=`nodeinfo s3_access_key_id`
     export AWS_SECRET_ACCESS_KEY=`nodeinfo s3_secret_access_key`
+    set -x
     export HOME=/home/yarn
     # Run mlflow
     mlflow run {} \
