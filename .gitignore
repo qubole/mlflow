@@ -97,3 +97,6 @@ example/tutorial/R/*.nb.html
 travis_wait*.log
 
 .history
+
+mlflow/java/scoring/bin/*
+mlflow/java/client/bin/*
