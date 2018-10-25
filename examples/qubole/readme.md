@@ -41,6 +41,9 @@ Configure your S3 credentials via aws cli; for more information, refer to Config
 Run the Tracking Server
 Start the tracking server: 
 ```sh
+virtualenv mlflow_env
+source mlflow_env/bin/activate
+pip install https://github.com/qubole/mlflow/releases/download/v0.7.0-q/mlflow-0.7.0.dev0-py3-none-any.whl
 mlflow server --default-artifact-root s3://<bucket-name> --host 0.0.0.0.
 ```
 For more information, refer to MLflow > Running a Tracking Server.
