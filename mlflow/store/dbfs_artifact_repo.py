@@ -1,31 +1,37 @@
-import json
 import os
+import posixpath
+import json
 
 from mlflow.entities import FileInfo
-from mlflow.exceptions import IllegalArtifactPathError, MlflowException
+from mlflow.exceptions import MlflowException
 from mlflow.store.artifact_repo import ArtifactRepository
-from mlflow.utils.file_utils import build_path, get_relative_path
+from mlflow.store.rest_store import RestStore
+from mlflow.store.local_artifact_repo import LocalArtifactRepository
+from mlflow.tracking import utils
+from mlflow.utils.file_utils import relative_path_to_artifact_path
 from mlflow.utils.rest_utils import http_request, http_request_safe, RESOURCE_DOES_NOT_EXIST
 from mlflow.utils.string_utils import strip_prefix
+import mlflow.utils.databricks_utils
 
 LIST_API_ENDPOINT = '/api/2.0/dbfs/list'
 GET_STATUS_ENDPOINT = '/api/2.0/dbfs/get-status'
 DOWNLOAD_CHUNK_SIZE = 1024
+USE_FUSE_ENV_VAR = "MLFLOW_ENABLE_DBFS_FUSE_ARTIFACT_REPO"
 
 
-class DbfsArtifactRepository(ArtifactRepository):
+class DbfsRestArtifactRepository(ArtifactRepository):
     """
-    Stores artifacts on DBFS.
+    Stores artifacts on DBFS using the DBFS REST API.
 
     This repository is used with URIs of the form ``dbfs:/<path>``. The repository can only be used
     together with the RestStore.
     """
-
-    def __init__(self, artifact_uri, get_host_creds):
-        cleaned_artifact_uri = artifact_uri.rstrip('/')
-        super(DbfsArtifactRepository, self).__init__(cleaned_artifact_uri)
-        self.get_host_creds = get_host_creds
-        if not cleaned_artifact_uri.startswith('dbfs:/'):
+    def __init__(self, artifact_uri):
+        super(DbfsRestArtifactRepository, self).__init__(artifact_uri)
+        # NOTE: if we ever need to support databricks profiles different from that set for
+        #  tracking, we could pass in the databricks profile name into this class.
+        self.get_host_creds = _get_host_creds_from_default_store()
+        if not artifact_uri.startswith('dbfs:/'):
             raise MlflowException('DbfsArtifactRepository URI must start with dbfs:/')
 
     def _databricks_api_request(self, endpoint, **kwargs):
@@ -64,31 +70,33 @@ class DbfsArtifactRepository(ArtifactRepository):
 
     def log_artifact(self, local_file, artifact_path=None):
         basename = os.path.basename(local_file)
-        if artifact_path == '':
-            raise IllegalArtifactPathError('artifact_path cannot be the empty string.')
         if artifact_path:
-            http_endpoint = self._get_dbfs_endpoint(os.path.join(artifact_path, basename))
+            http_endpoint = self._get_dbfs_endpoint(
+                posixpath.join(artifact_path, basename))
         else:
-            http_endpoint = self._get_dbfs_endpoint(os.path.basename(local_file))
-        with open(local_file, 'rb') as f:
+            http_endpoint = self._get_dbfs_endpoint(basename)
+        if os.stat(local_file).st_size == 0:
+            # The API frontend doesn't like it when we post empty files to it using
+            # `requests.request`, potentially due to the bug described in
+            # https://github.com/requests/requests/issues/4215
             self._databricks_api_request(
-                endpoint=http_endpoint, method='POST', data=f, allow_redirects=False)
+                endpoint=http_endpoint, method='POST', data="", allow_redirects=False)
+        else:
+            with open(local_file, 'rb') as f:
+                self._databricks_api_request(
+                    endpoint=http_endpoint, method='POST', data=f, allow_redirects=False)
 
     def log_artifacts(self, local_dir, artifact_path=None):
-        if artifact_path:
-            root_http_endpoint = self._get_dbfs_endpoint(artifact_path)
-        else:
-            root_http_endpoint = self._get_dbfs_endpoint('')
+        artifact_path = artifact_path or ''
         for (dirpath, _, filenames) in os.walk(local_dir):
-            dir_http_endpoint = root_http_endpoint
+            artifact_subdir = artifact_path
             if dirpath != local_dir:
-                rel_path = get_relative_path(local_dir, dirpath)
-                dir_http_endpoint = build_path(root_http_endpoint, rel_path)
+                rel_path = os.path.relpath(dirpath, local_dir)
+                rel_path = relative_path_to_artifact_path(rel_path)
+                artifact_subdir = posixpath.join(artifact_path, rel_path)
             for name in filenames:
-                endpoint = build_path(dir_http_endpoint, name)
-                with open(build_path(dirpath, name), 'rb') as f:
-                    self._databricks_api_request(
-                        endpoint=endpoint, method='POST', data=f, allow_redirects=False)
+                file_path = os.path.join(dirpath, name)
+                self.log_artifact(file_path, artifact_subdir)
 
     def list_artifacts(self, path=None):
         if path:
@@ -124,3 +132,31 @@ class DbfsArtifactRepository(ArtifactRepository):
     def _download_file(self, remote_file_path, local_path):
         self._dbfs_download(output_path=local_path,
                             endpoint=self._get_dbfs_endpoint(remote_file_path))
+
+
+def _get_host_creds_from_default_store():
+    store = utils._get_store()
+    if not isinstance(store, RestStore):
+        raise MlflowException('Failed to get credentials for DBFS; they are read from the ' +
+                              'Databricks CLI credentials or MLFLOW_TRACKING* environment ' +
+                              'variables.')
+    return store.get_host_creds
+
+
+def dbfs_artifact_repo_factory(artifact_uri):
+    """
+    Returns an ArtifactRepository subclass for storing artifacts on DBFS.
+
+    This factory method is used with URIs of the form ``dbfs:/<path>``. DBFS-backed artifact
+    storage can only be used together with the RestStore.
+    :param artifact_uri: DBFS root artifact URI (string).
+    :return: Subclass of ArtifactRepository capable of storing artifacts on DBFS.
+    """
+    cleaned_artifact_uri = artifact_uri.rstrip('/')
+    if mlflow.utils.databricks_utils.is_dbfs_fuse_available() \
+            and os.environ.get(USE_FUSE_ENV_VAR, "").lower() != "false":
+        # If the DBFS FUSE mount is available, write artifacts directly to /dbfs/... using
+        # local filesystem APIs
+        file_uri = "file:///dbfs/{}".format(strip_prefix(cleaned_artifact_uri, "dbfs:/"))
+        return LocalArtifactRepository(file_uri)
+    return DbfsRestArtifactRepository(cleaned_artifact_uri)

@@ -16,10 +16,12 @@ from six import reraise
 import mlflow
 from mlflow.models import Model
 from mlflow.exceptions import MlflowException
+from mlflow.utils import keyword_only
 
 FLAVOR_NAME = "mleap"
 
 
+@keyword_only
 def log_model(spark_model, sample_input, artifact_path):
     """
     Log a Spark MLLib model in MLeap format as an MLflow artifact
@@ -61,15 +63,17 @@ def log_model(spark_model, sample_input, artifact_path):
     >>> pipeline = Pipeline(stages=[tokenizer, hashingTF, lr])
     >>> model = pipeline.fit(training)
     >>> #log parameters
-    >>> mlflow.log_parameter("max_iter", 10)
-    >>> mlflow.log_parameter("reg_param", 0.001)
+    >>> mlflow.log_param("max_iter", 10)
+    >>> mlflow.log_param("reg_param", 0.001)
     >>> #log the Spark MLlib model in MLeap format
-    >>> mlflow.mleap.log_model(model, test_df, "mleap-model")
+    >>> mlflow.mleap.log_model(spark_model=model, sample_input=test_df,
+    >>>                        artifact_path="mleap-model")
     """
     return Model.log(artifact_path=artifact_path, flavor=mlflow.mleap,
                      spark_model=spark_model, sample_input=sample_input)
 
 
+@keyword_only
 def save_model(spark_model, sample_input, path, mlflow_model=Model()):
     """
     Save a Spark MLlib PipelineModel in MLeap format at a local path.
@@ -86,20 +90,13 @@ def save_model(spark_model, sample_input, path, mlflow_model=Model()):
                          required by MLeap for data schema inference.
     :param path: Local path where the model is to be saved.
     :param mlflow_model: :py:mod:`mlflow.models.Model` to which this flavor is being added.
-
-    >>> import mlflow
-    >>> import mlflow.mleap
-    >>> #set values as appropriate
-    >>> spark_model = ...
-    >>> model_save_dir = ...
-    >>> sample_input_df = ...
-    >>> #save the spark MLlib model in MLeap flavor
-    >>> mlflow.mleap.save_model(spark_model, sample_input_df, model_save_dir)
     """
-    add_to_model(mlflow_model, path, spark_model, sample_input)
+    add_to_model(mlflow_model=mlflow_model, path=path, spark_model=spark_model,
+                 sample_input=sample_input)
     mlflow_model.save(os.path.join(path, "MLmodel"))
 
 
+@keyword_only
 def add_to_model(mlflow_model, path, spark_model, sample_input):
     """
     Add the MLeap flavor to an existing MLflow model.
@@ -110,16 +107,6 @@ def add_to_model(mlflow_model, path, spark_model, sample_input):
                         cannot contain any custom transformers.
     :param sample_input: Sample PySpark DataFrame input that the model can evaluate. This is
                          required by MLeap for data schema inference.
-
-    >>> import mlflow
-    >>> import mlflow.mleap
-    >>> #set values
-    >>> mlflow_model = ...
-    >>> spark_model = ...
-    >>> model_path_dir = ...
-    >>> sample_input_df =
-    >>> #add MLeap flavor to our MLflow model
-    >>> mlflow.mleap.add_to_model(mlflow_model,model_path_dir, sample_input_df)
     """
     from pyspark.ml.pipeline import PipelineModel
     from pyspark.sql import DataFrame
@@ -135,6 +122,9 @@ def add_to_model(mlflow_model, path, spark_model, sample_input):
     if not isinstance(sample_input, DataFrame):
         raise Exception("The sample input must be a PySpark dataframe of type `{df_type}`".format(
             df_type=DataFrame.__module__))
+
+    # MLeap's model serialization routine requires an absolute output path
+    path = os.path.abspath(path)
 
     mleap_path_full = os.path.join(path, "mleap")
     mleap_datapath_sub = os.path.join("mleap", "model")
@@ -179,10 +169,10 @@ def add_to_model(mlflow_model, path, spark_model, sample_input):
 
 def _get_mleap_schema(dataframe):
     """
-    :param dataframe: A PySpark dataframe object
+    :param dataframe: A PySpark DataFrame object
 
     :return: The schema of the supplied dataframe, in MLeap format. This serialized object of type
-    `ml.combust.mleap.core.types.StructType`, represented as a JSON dictionary.
+    ``ml.combust.mleap.core.types.StructType``, represented as a JSON dictionary.
     """
     from pyspark.ml.util import _jvm
     ReflectionUtil = _jvm().py4j.reflection.ReflectionUtil
@@ -214,5 +204,5 @@ def _handle_py4j_error(reraised_error_type, reraised_error_text):
 
 
 class MLeapSerializationException(MlflowException):
-    """Exception thrown when a model or dataframe cannot be serialized in MLeap format"""
+    """Exception thrown when a model or DataFrame cannot be serialized in MLeap format"""
     pass

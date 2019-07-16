@@ -1,10 +1,11 @@
 import os
 
+import posixpath
 from six.moves import urllib
 
 from mlflow.entities import FileInfo
 from mlflow.store.artifact_repo import ArtifactRepository
-from mlflow.utils.file_utils import build_path, get_relative_path
+from mlflow.utils.file_utils import relative_path_to_artifact_path
 
 
 class GCSArtifactRepository(ArtifactRepository):
@@ -37,8 +38,9 @@ class GCSArtifactRepository(ArtifactRepository):
     def log_artifact(self, local_file, artifact_path=None):
         (bucket, dest_path) = self.parse_gcs_uri(self.artifact_uri)
         if artifact_path:
-            dest_path = build_path(dest_path, artifact_path)
-        dest_path = build_path(dest_path, os.path.basename(local_file))
+            dest_path = posixpath.join(dest_path, artifact_path)
+        dest_path = posixpath.join(
+            dest_path, os.path.basename(local_file))
 
         gcs_bucket = self.gcs.Client().get_bucket(bucket)
         blob = gcs_bucket.blob(dest_path)
@@ -47,24 +49,25 @@ class GCSArtifactRepository(ArtifactRepository):
     def log_artifacts(self, local_dir, artifact_path=None):
         (bucket, dest_path) = self.parse_gcs_uri(self.artifact_uri)
         if artifact_path:
-            dest_path = build_path(dest_path, artifact_path)
+            dest_path = posixpath.join(dest_path, artifact_path)
         gcs_bucket = self.gcs.Client().get_bucket(bucket)
 
         local_dir = os.path.abspath(local_dir)
         for (root, _, filenames) in os.walk(local_dir):
             upload_path = dest_path
             if root != local_dir:
-                rel_path = get_relative_path(local_dir, root)
-                upload_path = build_path(dest_path, rel_path)
+                rel_path = os.path.relpath(root, local_dir)
+                rel_path = relative_path_to_artifact_path(rel_path)
+                upload_path = posixpath.join(dest_path, rel_path)
             for f in filenames:
-                path = build_path(upload_path, f)
-                gcs_bucket.blob(path).upload_from_filename(build_path(root, f))
+                path = posixpath.join(upload_path, f)
+                gcs_bucket.blob(path).upload_from_filename(os.path.join(root, f))
 
     def list_artifacts(self, path=None):
         (bucket, artifact_path) = self.parse_gcs_uri(self.artifact_uri)
         dest_path = artifact_path
         if path:
-            dest_path = build_path(dest_path, path)
+            dest_path = posixpath.join(dest_path, path)
         prefix = dest_path + "/"
 
         bkt = self.gcs.Client().get_bucket(bucket)
@@ -73,7 +76,7 @@ class GCSArtifactRepository(ArtifactRepository):
 
         results = bkt.list_blobs(prefix=prefix, delimiter="/")
         for result in results:
-            blob_path = result.name[len(artifact_path)+1:]
+            blob_path = result.name[len(artifact_path) + 1:]
             infos.append(FileInfo(blob_path, False, result.size))
 
         return sorted(infos, key=lambda f: f.path)
@@ -84,10 +87,10 @@ class GCSArtifactRepository(ArtifactRepository):
         for page in results.pages:
             dir_paths.update(page.prefixes)
 
-        return [FileInfo(path[len(artifact_path)+1:-1], True, None)for path in dir_paths]
+        return [FileInfo(path[len(artifact_path) + 1:-1], True, None) for path in dir_paths]
 
     def _download_file(self, remote_file_path, local_path):
         (bucket, remote_root_path) = self.parse_gcs_uri(self.artifact_uri)
-        remote_full_path = build_path(remote_root_path, remote_file_path)
+        remote_full_path = posixpath.join(remote_root_path, remote_file_path)
         gcs_bucket = self.gcs.Client().get_bucket(bucket)
         gcs_bucket.get_blob(remote_full_path).download_to_filename(local_path)
