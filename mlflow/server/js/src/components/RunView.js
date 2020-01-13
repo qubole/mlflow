@@ -180,6 +180,16 @@ class RunView extends Component {
               </a>
             </Descriptions.Item>
           ) : null}
+          {tags['mlflow.qubole.commandURL'] !== undefined ? (
+            <Descriptions.Item label='Job Output'>
+              <a
+                href={Utils.setQueryParams(tags['mlflow.qubole.commandURL'].value, queryParams)}
+                target="_blank"
+              >
+                Logs
+              </a>
+            </Descriptions.Item>
+          ) : null}
         </Descriptions>
 
         {/* Page Sections */}

@@ -19,6 +19,7 @@ import posixpath
 import docker
 
 import mlflow.projects.databricks
+import mlflow.projects.qubole
 import mlflow.tracking as tracking
 import mlflow.tracking.fluent as fluent
 from mlflow.entities import RunStatus, SourceType
@@ -201,8 +202,15 @@ def _run(uri, experiment_id, entry_point="main", version=None, parameters=None,
             kube_config['kube-job-template']
         )
         return submitted_run
-
-    supported_backends = ["local", "databricks", "kubernetes"]
+    elif backend == "qubole":
+        tracking.MlflowClient().set_tag(active_run.info.run_id, MLFLOW_PROJECT_BACKEND,
+                                "qubole")
+        from mlflow.projects.qubole import run_qubole
+        return run_qubole(
+            remote_run=active_run,
+            uri=uri, entry_point=entry_point, work_dir=work_dir, parameters=parameters,
+            experiment_id=experiment_id, cluster_spec=backend_config)
+    supported_backends = ["local", "databricks", "kubernetes", "qubole"]
     raise ExecutionException("Got unsupported execution mode %s. Supported "
                              "values: %s" % (backend, supported_backends))
 
@@ -276,7 +284,8 @@ def run(uri, entry_point="main", version=None, parameters=None,
 
     if backend == "databricks":
         mlflow.projects.databricks.before_run_validations(mlflow.get_tracking_uri(), backend_config)
-
+    elif backend == "qubole":
+        mlflow.projects.qubole.before_run_validations(mlflow.get_tracking_uri(), cluster_spec_dict)
     experiment_id = _resolve_experiment_id(experiment_name=experiment_name,
                                            experiment_id=experiment_id)
 

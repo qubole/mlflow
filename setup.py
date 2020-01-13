@@ -51,6 +51,7 @@ setup(
         'sqlalchemy',
         'gorilla',
         'prometheus-flask-exporter',
+        'qds-sdk'
     ],
     extras_require={
         'extras':[
